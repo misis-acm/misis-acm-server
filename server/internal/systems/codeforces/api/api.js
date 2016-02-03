@@ -22,6 +22,9 @@ module.exports = {
     problemset: {
         problems: getProblemset,
         recentStatus: getProblemsetRecentStatus
+    },
+    user: {
+        status: getUserStatus
     }
 };
 
@@ -69,6 +72,12 @@ function getProblemset(params, callback) {
 
 function getProblemsetRecentStatus(params, callback) {
     var methodUri = '/problemset.recentStatus',
+        apiUrl = ACM_BASE_URI + API_URI + methodUri;
+    invokeMethod(apiUrl, params, callback);
+}
+
+function getUserStatus(params, callback) {
+    var methodUri = '/user.status',
         apiUrl = ACM_BASE_URI + API_URI + methodUri;
     invokeMethod(apiUrl, params, callback);
 }

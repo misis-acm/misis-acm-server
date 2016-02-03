@@ -13,7 +13,8 @@ var async = require('async');
 var unirest = require('unirest');
 
 var looperTimeout = 200;
-var MAX_WAITING_TIMEOUT = 2 * 60 * 1000;
+var MAX_WAITING_TIMEOUT = 5 * 60 * 1000;
+var LAST_SENTS_IN_MEMORY_LIMIT = 100;
 
 module.exports = {
     watch: Watch
@@ -21,9 +22,10 @@ module.exports = {
 
 function Watch(params, callback, progressCallback) {
     var beginTime = new Date().getTime(),
-        accountHandle = params.acmAccount.login;
+        accountHandle = params.acmAccount.login,
+        externalContestId = +params.solution.contest_id;
 
-    params.acmAccount.lastSentSolutionId = params.acmAccount.lastSentSolutionId || 0;
+    params.acmAccount.lastSentSolutionIds = params.acmAccount.lastSentSolutionIds || [];
 
     async.forever(function (next) {
         var curTime = new Date().getTime();
@@ -31,10 +33,10 @@ function Watch(params, callback, progressCallback) {
             callback(new Error('Max timeout limit has exceeded.'));
             return next(true);
         }
-        codeforcesApi.contest.status({
-            contestId: params.solution.contest_id,
+        codeforcesApi.user.status({
             from: 1,
-            count: 100
+            count: 1,
+            handle: accountHandle
         }, function (err, response) {
             if (err) {
                 callback(err);
@@ -49,7 +51,8 @@ function Watch(params, callback, progressCallback) {
                     break;
                 }
                 currentSolution = resultArray[solutionIndex];
-                var author = currentSolution.author;
+                var author = currentSolution.author,
+                    problemContestId = currentSolution.problem.contestId;
                 if (!author) {
                     continue;
                 }
@@ -59,13 +62,17 @@ function Watch(params, callback, progressCallback) {
                 }
                 for (var memberIndex in solutionMembers) {
                     if (!solutionMembers.hasOwnProperty(memberIndex)) continue;
-                    var member = solutionMembers[memberIndex];
+                    var member = solutionMembers[ memberIndex ];
                     if (member.handle
                         && member.handle.toLowerCase() === accountHandle.toLowerCase()
-                        && params.acmAccount.lastSentSolutionId !== resultArray[solutionIndex].id) {
+                        && !~params.acmAccount.lastSentSolutionIds.indexOf( resultArray[ solutionIndex ].id )
+                        && problemContestId === externalContestId) {
                         if (currentSolution.verdict
                             && currentSolution.verdict !== 'TESTING') {
-                            params.acmAccount.lastSentSolutionId = currentSolution.id;
+                            params.acmAccount.lastSentSolutionIds.push( currentSolution.id );
+                            if (params.acmAccount.lastSentSolutionIds.length > LAST_SENTS_IN_MEMORY_LIMIT) {
+                                params.acmAccount.lastSentSolutionIds.shift();
+                            }
                             callback(null, {
                                 solutionId: currentSolution.id,
                                 verdict: currentSolution.verdict,

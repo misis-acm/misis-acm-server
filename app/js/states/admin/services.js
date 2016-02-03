@@ -155,6 +155,65 @@ angular.module('Qemy.services.admin', [
                 return data.data;
             });
         }
+        
+        function restart() {
+            return $http({
+                method: 'post',
+                url: '/api/admin/restart'
+            }).then(function (data) {
+                return data.data;
+            });
+        }
+
+        function setVerdictForSent(params) {
+            return $http({
+                method: 'post',
+                url: '/api/admin/setVerdictForSent',
+                data: params
+            }).then(function (data) {
+                return data.data;
+            });
+        }
+
+        function sendSolutionAgain(params) {
+            return $http({
+                method: 'post',
+                url: '/api/admin/sendSolutionAgain',
+                data: params
+            }).then(function (data) {
+                return data.data;
+            });
+        }
+
+        function refreshSolution(params) {
+            return $http({
+                method: 'post',
+                url: '/api/admin/refreshSolution',
+                data: params
+            }).then(function (data) {
+                return data.data;
+            });
+        }
+
+        function deleteSolution(params) {
+            return $http({
+                method: 'post',
+                url: '/api/admin/deleteSolution',
+                data: params
+            }).then(function (data) {
+                return data.data;
+            });
+        }
+
+        function getRatingTable(params) {
+            return $http({
+                method: 'post',
+                url: '/api/admin/getRatingTable',
+                data: params
+            }).then(function (data) {
+                return data.data;
+            });
+        }
 
         return {
             searchGroups: searchGroups,
@@ -170,7 +229,13 @@ angular.module('Qemy.services.admin', [
             scanTimus: scanTimus,
             scanCfProblemset: scanCfProblemset,
             scanCfGym: scanCfGym,
-            scanAcmp: scanAcmp
+            scanAcmp: scanAcmp,
+            restart: restart,
+            setVerdictForSent: setVerdictForSent,
+            sendSolutionAgain: sendSolutionAgain,
+            refreshSolution: refreshSolution,
+            deleteSolution: deleteSolution,
+            getRatingTable: getRatingTable
         }
     }])
 ;

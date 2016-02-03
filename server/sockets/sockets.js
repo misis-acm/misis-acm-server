@@ -18,7 +18,7 @@ module.exports = {
     create: Create,
     handle: Handle,
     getIo: GetIO,
-    getHash: getHash,
+    getRoomHash: getRoomHash,
     salt: salt
 };
 
@@ -44,7 +44,7 @@ function Handle(socket) {
             return;
         }
         console.log('Join to contest:', data.contest_id);
-        var contestHashKey = getHash(data.contest_id + salt);
+        var contestHashKey = getRoomHash(data.contest_id);
         socket.join(contestHashKey);
     });
 
@@ -52,7 +52,7 @@ function Handle(socket) {
         if (!data.contest_id) {
             return;
         }
-        var contestHashKey = getHash(data.contest_id + salt);
+        var contestHashKey = getRoomHash(data.contest_id);
         socket.leave(contestHashKey);
     });
 
@@ -61,6 +61,6 @@ function Handle(socket) {
     });
 }
 
-function getHash(str) {
-    return crypto.createHash('md5').update(str).digest('hex');
+function getRoomHash(str) {
+    return crypto.createHash('md5').update(str + salt).digest('hex');
 }

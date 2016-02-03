@@ -49,6 +49,12 @@ angular.module('Qemy.controllers.admin', [])
             }, {
                 uiSref: 'admin.problems',
                 name: 'Задачи'
+            }, {
+                uiSref: 'admin.server',
+                name: 'Сервер'
+            }, {
+                uiSref: 'admin.contests-rating.create.index',
+                name: 'Рейтинги'
             }/*, {
                 uiSref: 'admin.index',
                 name: 'Группы пользователей'
@@ -209,7 +215,7 @@ angular.module('Qemy.controllers.admin', [])
 
             $scope.$on('admin update contest list', function () {
                 updateContestsList();
-            })
+            });
         }
     ])
 
@@ -844,7 +850,7 @@ angular.module('Qemy.controllers.admin', [])
 
     .controller('AdminProblemsController', ['$scope', '$rootScope', '$mdDialog', '$state', 'AdminManager',
         function($scope, $rootScope, $mdDialog, $state, AdminManager) {
-            $scope.loadingTimus = false;
+            $scope.loading = false;
 
             $scope.scan = function (systemType) {
                 var confirm = $mdDialog.confirm()
@@ -884,6 +890,270 @@ angular.module('Qemy.controllers.admin', [])
                     });
                 });
             };
+        }
+    ])
+
+    .controller('AdminServerController', ['$scope', '$rootScope', '$mdDialog', '$state', 'AdminManager', '$timeout',
+        function($scope, $rootScope, $mdDialog, $state, AdminManager, $timeout) {
+
+            $scope.restart = function () {
+                var confirm = $mdDialog.confirm()
+                    .title('Подтверждение')
+                    .content('Вы действительно хотите произвести рестарт системы? Перезапуск занимает от 1 до 2 секунд.')
+                    .ariaLabel('Seriously?')
+                    .ok('Да')
+                    .cancel('Отмена');
+
+                $mdDialog.show(confirm).then(function () {
+                    $scope.loading = true;
+                    $scope.$emit('data loading');
+
+                    AdminManager.restart().then(function (data) {
+                        $timeout(function () {
+                            $scope.loading = false;
+                        }, 2000);
+                        $scope.$emit('data loaded');
+                        if (data.error) {
+                            return alert('Произошла ошибка: ' + data.error);
+                        }
+                    });
+                });
+            };
+        }
+    ])
+
+    /* Base rating controller */
+    .controller('AdminRatingBaseController', ['$scope', '$rootScope', '$state', 'AdminManager',
+        function($scope, $rootScope, $state, AdminManager) {}
+    ])
+
+    /* Base create rating controller */
+    .controller('AdminRatingCreateBaseController', ['$scope', '$rootScope', '$state', 'AdminManager', '_',
+        function($scope, $rootScope, $state, AdminManager, _) {
+            $scope.$emit('change_title', {
+                title: 'Создание рейтинга | ' + _('app_name')
+            });
+
+            $scope.selectedContests = [];
+
+            $scope.existsContest = function (contest, selectedContests) {
+                return selectedContests.some(function (curItem) {
+                    return curItem.id === contest.id;
+                });
+            };
+
+            $scope.toggleContest = function (contest, selectedContests) {
+                var exists = $scope.existsContest(contest, selectedContests);
+                if (exists) {
+                    selectedContests.forEach(function (curContest, index) {
+                        if (curContest.id === contest.id) {
+                            selectedContests.splice(index, 1);
+                        }
+                    });
+                } else {
+                    selectedContests.push(contest);
+                }
+            };
+
+            $scope.createRating = function () {
+                if (!$scope.selectedContests.length) {
+                    return;
+                }
+                $state.go('admin-contests-rating-table', {
+                    contests: $scope.selectedContests.map(function (contest) {
+                        return contest.id;
+                    }).join(',')
+                });
+            };
+        }
+    ])
+
+    .controller('AdminRatingCreateController', ['$scope', '$rootScope', '$state', 'AdminManager', 'ContestsManager', '_',
+        function($scope, $rootScope, $state, AdminManager, ContestsManager, _) {
+            var defaultCount = 10;
+
+            $scope.pageNumber = parseInt($state.params.pageNumber || 1);
+            $scope.params = {
+                count: defaultCount,
+                offset: ($scope.pageNumber - 1) * defaultCount,
+                category: 'all',
+                sort: 'byId',
+                sort_order: 'desc'
+            };
+
+            $scope.all_items_count = 0;
+            $scope.pagination = [];
+            $scope.contestsList = [];
+            $scope.allPages = 0;
+
+            $scope.curSortItem = null;
+            $scope.sortCategories = [{
+                name: 'По дате создания',
+                sort: 'byId'
+            }, {
+                name: 'По времени завершения',
+                sort: 'byEnd'
+            }, {
+                name: 'По времени начала',
+                sort: 'byStart'
+            }];
+
+            $scope.curSortOrder = null;
+            $scope.sortOrders = [{
+                name: 'По убыванию',
+                order: 'desc'
+            }, {
+                name: 'По возрастанию',
+                order: 'asc'
+            }];
+
+            $scope.curCategory = null;
+            $scope.contestCategories = [{
+                name: 'Все',
+                category: 'all'
+            }, {
+                name: 'Только активные',
+                category: 'showOnlyStarted'
+            }, {
+                name: 'Только активные с заморозкой',
+                category: 'showOnlyFrozen'
+            }, {
+                name: 'Только завершенные',
+                category: 'showOnlyFinished'
+            }, {
+                name: 'Только дорешивание',
+                category: 'showOnlyPractice'
+            }, {
+                name: 'Только доступные',
+                category: 'showOnlyEnabled'
+            }, {
+                name: 'Только недоступные',
+                category: 'showOnlyDisabled'
+            }, {
+                name: 'Только удалённые',
+                category: 'showOnlyRemoved'
+            }];
+
+            function generatePaginationArray(offsetCount) {
+                var pages = [],
+                    curPage = $scope.pageNumber,
+                    allItems = $scope.all_items_count,
+                    backOffsetPages = offsetCount,
+                    upOffsetPages = offsetCount,
+                    allPages = Math.floor(allItems / defaultCount) +
+                        (allItems && allItems % defaultCount ? 1 : 0);
+                if (!defaultCount) {
+                    allPages = 1e6;
+                }
+                $scope.allPages = allPages;
+                for (var cur = Math.max(curPage - backOffsetPages, 1);
+                     cur <= Math.min(curPage + upOffsetPages, allPages); ++cur) {
+                    pages.push({
+                        number: cur,
+                        active: cur === curPage
+                    });
+                }
+                return pages;
+            }
+
+            var firstInvokeStateChanged = true;
+            $scope.$on('$stateChangeSuccess', function(event, toState, toParams, fromState, fromParams) {
+                if (firstInvokeStateChanged) {
+                    return firstInvokeStateChanged = false;
+                }
+                $scope.pageNumber = toParams.pageNumber ?
+                    parseInt(toParams.pageNumber) : 1;
+                $scope.params.offset = ($scope.pageNumber - 1) * defaultCount;
+                updateContestsList();
+            });
+
+            function updateContestsList() {
+                $rootScope.$broadcast('data loading');
+                var contestsPromise = ContestsManager.getContests($scope.params);
+                contestsPromise.then(function (result) {
+                    $rootScope.$broadcast('data loaded');
+                    if (!result || !result.hasOwnProperty('all_items_count')) {
+                        return;
+                    }
+                    $scope.all_items_count = result.all_items_count;
+                    $scope.contestsList = result.contests;
+                    $scope.pagination = generatePaginationArray(5);
+                }).catch(function (err) {
+                    console.log(err);
+                });
+            }
+
+            updateContestsList();
+
+            $scope.$watch('curCategory', function (newVal, oldVal) {
+                if (!newVal) {
+                    return;
+                }
+                $scope.params.category = newVal;
+                $scope.pageNumber !== 1 ?
+                    $state.go('contests.list') : updateContestsList();
+                console.log('updating contests list...');
+            });
+
+            $scope.$watch('curSortItem', function (newVal, oldVal) {
+                if (!newVal) {
+                    return;
+                }
+                $scope.params.sort = newVal;
+                updateContestsList();
+                console.log('updating contests list...');
+            });
+
+            $scope.$watch('curSortOrder', function (newVal, oldVal) {
+                if (!newVal) {
+                    return;
+                }
+                $scope.params.sort_order = newVal;
+                updateContestsList();
+                console.log('updating contests list...');
+            });
+
+            $scope.$on('admin update contest list', function () {
+                updateContestsList();
+            })
+        }
+    ])
+
+    .controller('AdminRatingTableController', ['$scope', '$rootScope', '$state', 'AdminManager',
+        function($scope, $rootScope, $state, AdminManager) {
+            var contestIds = ( $state.params.contests || '' ).split( ',' ) || [ ];
+
+            contestIds = contestIds.map(function (element) {
+                return +element;
+            }).filter(function (element) {
+                return typeof element === 'number' && element > 0;
+            });
+
+            if (!contestIds.length) {
+                return $state.go('admin.contests-rating.create.index');
+            }
+
+            $scope.scoreInTime = 2;
+            $scope.scoreInPractice = 1;
+
+            $scope.table = {};
+
+            function updateRatingTable() {
+                $rootScope.$broadcast('data loading');
+                AdminManager.getRatingTable({
+                    contests: contestIds,
+                    score_in_time: $scope.scoreInTime,
+                    score_in_practice: $scope.scoreInPractice
+                }).then(function (result) {
+                    $rootScope.$broadcast('data loaded');
+                    if (!result || result.error) {
+                        return alert('Произошла ошибка: ' + result.error);
+                    }
+                    $scope.table = result;
+                });
+            }
+            $scope.updateRatingTable = updateRatingTable;
+            updateRatingTable();
         }
     ])
 ;

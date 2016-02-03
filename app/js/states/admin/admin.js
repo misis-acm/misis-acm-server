@@ -71,5 +71,37 @@ angular.module('Qemy.ui.admin', [
                     templateUrl: templateUrl('admin', 'admin-users-edit'),
                     controller: 'AdminEditUserController'
                 })
+                .state('admin.server', {
+                    url: '/server',
+                    templateUrl: templateUrl('admin', 'admin-server'),
+                    controller: 'AdminServerController'
+                })
+                .state('admin.contests-rating', {
+                    url: '/rating',
+                    template: '<ui-view/>',
+                    controller: 'AdminRatingBaseController',
+                    abstract: true
+                })
+                .state('admin.contests-rating.create', {
+                    url: '/create',
+                    template: '<ui-view/>',
+                    controller: 'AdminRatingCreateBaseController',
+                    abstract: true
+                })
+                .state('admin.contests-rating.create.index', {
+                    url: '',
+                    templateUrl: templateUrl('admin', 'admin-rating-create'),
+                    controller: 'AdminRatingCreateController'
+                })
+                .state('admin.contests-rating.create.index-pagination', {
+                    url: '/page/:pageNumber',
+                    templateUrl: templateUrl('admin', 'admin-rating-create'),
+                    controller: 'AdminRatingCreateController'
+                })
+                .state('admin-contests-rating-table', {
+                    url: '/admin/rating/table/:contests',
+                    templateUrl: templateUrl('admin', 'admin-rating-table'),
+                    controller: 'AdminRatingTableController'
+                })
         }
     ]);

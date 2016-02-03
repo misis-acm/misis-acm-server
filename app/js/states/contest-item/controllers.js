@@ -13,8 +13,8 @@
 
 angular.module('Qemy.controllers.contest-item', [])
 
-    .controller('ContestItemBaseController', ['$scope', '$rootScope', '$state', 'ContestsManager', '_', 'SocketService',
-        function ($scope, $rootScope, $state, ContestsManager, _, SocketService) {
+    .controller('ContestItemBaseController', ['$scope', '$rootScope', '$state', 'ContestsManager', '_', 'SocketService', 'Battery', '$mdToast',
+        function ($scope, $rootScope, $state, ContestsManager, _, SocketService, Battery, $mdToast) {
             $scope.$emit('change_title', {
                 title: 'Контест | ' + _('app_name')
             });
@@ -53,9 +53,9 @@ angular.module('Qemy.controllers.contest-item', [])
 
             function contestFill (contest) {
                 function getMonthName(num) {
-                    num = num || 1;
-                    if (num < 1 || num > 12) {
-                        num = 1;
+                    num = num || 0;
+                    if (num < 0 || num > 12) {
+                        num = 0;
                     }
                     var month = ['Января', 'Февраля', 'Марта', 'Апреля', 'Мая', 'Июня',
                         'Июля', 'Августа', 'Сентября', 'Октября', 'Ноября', 'Декабря'];
@@ -129,7 +129,48 @@ angular.module('Qemy.controllers.contest-item', [])
             $scope.$on('$destroy', function () {
                 $rootScope.$broadcast('header expand close');
                 SocketService.leaveContest(contestId);
+                Battery.dispose();
                 removeEvents();
+            });
+
+            var batteryLowEventDispatched = false;
+            if (Battery.supported) {
+                Battery.setOnLevelChangeListener(function (event) {
+                    if (!event || !event.target || !event.target.level
+                        || event.target.charging || !event.target.dischargingTime) {
+                        return;
+                    }
+                    var level = event.target.level,
+                        dischargingTime = event.target.dischargingTime;
+                    if (level < 1) {
+                        level *= 100;
+                    }
+                    if (level <= 15 && !batteryLowEventDispatched) {
+                        $rootScope.$broadcast( 'battery level low', { level: level, dischargingTime: dischargingTime } );
+                    }
+                });
+            }
+
+            $scope.$on('battery level low', function (ev, args) {
+                var position = [ 'left', 'bottom' ];
+                var toast = $mdToast.show({
+                    hideDelay: 20000,
+                    parent: document.body,
+                    templateUrl: templateUrl('contest-item/toast', 'battery-charge-low'),
+                    controller: ['$scope', function ($scope) {
+                        $scope.dischargingTime = new Date().getTime() + args.dischargingTime * 1000;
+                        $scope.closeToast = function() {
+                            $mdToast.hide();
+                        };
+                    }],
+                    position: position.join(' ')
+                });
+
+                toast.then(function(response) {
+                    if ( response == 'ok' ) {
+                        batteryLowEventDispatched = true;
+                    }
+                });
             });
         }
     ])
@@ -143,8 +184,8 @@ angular.module('Qemy.controllers.contest-item', [])
         }
     ])
 
-    .controller('ContestItemMonitorController', ['$scope', '$rootScope', '$state', 'ContestItemManager', '_', 'UserManager',
-        function ($scope, $rootScope, $state, ContestItemManager, _, UserManager) {
+    .controller('ContestItemMonitorController', ['$scope', '$rootScope', '$state', 'ContestItemManager', '_', 'UserManager', '$mdDialog',
+        function ($scope, $rootScope, $state, ContestItemManager, _, UserManager, $mdDialog) {
             $scope.$emit('change_title', {
                 title: 'Таблица результатов | ' + _('app_name')
             });
@@ -181,6 +222,39 @@ angular.module('Qemy.controllers.contest-item', [])
                     updateTable(true);
                 }
             });
+
+            $scope.openStatusDialog = function (ev, cell, user) {
+                if (!cell || !cell.task || cell.result === '—'
+                    || !user || !user.user_id) {
+                    return;
+                }
+                var userId = user.user_id,
+                    problemIndex = cell.task;
+                cell._loading = true;
+
+                ContestItemManager.getSentsForCell({
+                    contest_id: contestId,
+                    user_id: userId,
+                    problem_index: problemIndex
+                }).then(function (response) {
+                    cell._loading = false;
+                    if (!response || response.error) {
+                        return alert('Произошла ошибка: ' + response.error);
+                    }
+                    $mdDialog.show({
+                        controller: 'ContestItemCellStatusController',
+                        templateUrl: templateUrl('contest-item/contest-monitor', 'contest-monitor-cell-status-dialog'),
+                        parent: angular.element(document.body),
+                        targetEvent: ev,
+                        clickOutsideToClose: true,
+                        locals: {
+                            sents: response.sents || [],
+                            $originalDialogArgs: [ ev, cell, user ],
+                            $originalDialogScope: $scope
+                        }
+                    });
+                });
+            };
         }
     ])
 
@@ -202,10 +276,9 @@ angular.module('Qemy.controllers.contest-item', [])
                 });
 
             $scope.user = {};
-            UserManager.getCurrentUser()
-                .then(function (user) {
-                    $scope.user = user;
-                });
+            UserManager.getCurrentUser().then(function (user) {
+                $scope.user = user;
+            });
         }
     ])
 
@@ -236,14 +309,22 @@ angular.module('Qemy.controllers.contest-item', [])
             });
             var contestId = $state.params.contestId;
             $scope.conditions = [];
-            $scope.selectedCondition = $state.params.problemIndex || 'A';
+            $scope.selectedCondition = $state.params.problemIndex;
             $scope.currentLangs = [];
             $scope.selectedLangId = null;
+
+            var curLang = {};
 
             $scope.$watch('selectedCondition', function (newValue, oldValue) {
                 if (!newValue) {
                     return;
                 }
+                Storage.get('selected_problems').then(function (selectedProblems) {
+                    selectedProblems = selectedProblems || {};
+                    selectedProblems[ 'contest' + contestId ] = $scope.selectedCondition;
+                    Storage.set({ selected_problems: selectedProblems });
+                });
+
                 $rootScope.$broadcast('data loading');
                 ContestItemManager.getLangs({
                     contest_id: contestId,
@@ -274,7 +355,6 @@ angular.module('Qemy.controllers.contest-item', [])
                 });
             });
 
-            var curLang = {};
             $scope.$watch('selectedLangId', function (newVal, oldVal) {
                 curLang.id = newVal;
                 if (newVal == oldVal) {
@@ -297,11 +377,20 @@ angular.module('Qemy.controllers.contest-item', [])
                 .then(function (result) {
                     $rootScope.$broadcast('data loaded');
                     if (result.error) {
-                        return;
+                        return alert('Произошла ошибка: ' + result.error);
                     }
                     $scope.conditions = result;
-                    $scope.selectedCondition = $scope.conditions && $scope.conditions.length && $scope.selectedCondition === 'A' ?
-                        $scope.conditions[0].internal_index : $scope.selectedCondition;
+                    Storage.get('selected_problems').then(function (selectedProblems) {
+                        selectedProblems = selectedProblems || {};
+                        if (!('contest' + contestId in selectedProblems)) {
+                            $scope.selectedCondition = $state.params.problemIndex || 'A';
+                            selectedProblems[ 'contest' + contestId ] = $scope.selectedCondition;
+                            Storage.set({ selected_problems: selectedProblems });
+                        } else {
+                            var curProblemIndex = selectedProblems[ 'contest' + contestId ];
+                            $scope.selectedCondition = $state.params.problemIndex || curProblemIndex || 'A';
+                        }
+                    });
                 });
 
             $scope.solution = '';
@@ -334,15 +423,15 @@ angular.module('Qemy.controllers.contest-item', [])
         }
     ])
 
-    .controller('ContestItemStatusController', ['$scope', '$rootScope', '$state', 'ContestItemManager', '_', '$timeout', 'UserManager',
-        function ($scope, $rootScope, $state, ContestItemManager, _, $timeout, UserManager) {
+    .controller('ContestItemStatusController', ['$scope', '$rootScope', '$state', 'ContestItemManager', '_', '$timeout', 'UserManager', '$mdDialog', 'AdminManager',
+        function ($scope, $rootScope, $state, ContestItemManager, _, $timeout, UserManager, $mdDialog, AdminManager) {
             $scope.$emit('change_title', {
                 title: 'Мои посылки | ' + _('app_name')
             });
 
             var contestId = $state.params.contestId;
             var select = $state.params.select;
-            var defaultCount = 50;
+            var defaultCount = 15;
 
             $scope.pageNumber = parseInt($state.params.pageNumber || 1);
             $scope.params = {
@@ -403,7 +492,7 @@ angular.module('Qemy.controllers.contest-item', [])
                         $timeout(function () {
                             $rootScope.$broadcast('data loaded');
                             $scope.loadingData = false;
-                        }, 500);
+                        }, 0);
                         if (result.error) {
                             return alert('Произошла ошибка: ' + result.error);
                         }
@@ -483,7 +572,8 @@ angular.module('Qemy.controllers.contest-item', [])
                 console.log(data);
                 var userId = data.contestant_id,
                     select = $scope.params.select;
-                if (select === 'my' && userId !== $scope.currentUser.id
+                if (select === 'my'
+                    && userId !== $scope.currentUser.id
                     || $scope.pageNumber !== 1) {
                     return;
                 }
@@ -493,11 +583,485 @@ angular.module('Qemy.controllers.contest-item', [])
                         return;
                     }
                 }
-                if (sents.length > 0) {
+                if (sents.length >= defaultCount) {
                     sents.pop();
                 }
                 sents.unshift(data);
             });
+
+            $scope.actionsMenuItems = [{
+                id: 'CHANGE_VERDICT',
+                name: 'Изменить вердикт',
+                svgIcon: '/img/icons/ic_edit_48px.svg'
+            }, {
+                id: 'SEND_DUPLICATE',
+                name: 'Продублировать отправку',
+                svgIcon: '/img/icons/ic_content_copy_48px.svg'
+            }, {
+                id: 'REFRESH_SOLUTION',
+                name: 'Переотправить решение',
+                svgIcon: '/img/icons/ic_refresh_48px.svg'
+            }, {
+                id: 'SENT_DELETE',
+                name: 'Удалить отправку',
+                svgIcon: '/img/icons/ic_delete_48px.svg'
+            }];
+
+            $scope.selectAction = function (ev, action, item) {
+                function changeVerdict() {
+                    if (!item || typeof item !== 'object') {
+                        return;
+                    }
+                    showVerdictSelectionDialog(ev, item);
+                }
+
+                function sendDuplicate() {
+                    if (!item || typeof item !== 'object') {
+                        return;
+                    }
+                    showConfirmationDialogBeforeSendDuplicate(ev).then(function () {
+                        AdminManager
+                            .sendSolutionAgain( { sent_id: item.sent_id } )
+                            .then(function (result) {
+                                if (result && result.error) {
+                                    return alert('Произошла ошибка: ' + result.error);
+                                }
+                            });
+                    });
+                }
+
+                function refreshSolution() {
+                    if (!item || typeof item !== 'object') {
+                        return;
+                    }
+                    showConfirmationDialogBeforeRefreshing(ev).then(function () {
+                        AdminManager
+                            .refreshSolution( { sent_id: item.sent_id } )
+                            .then(function (result) {
+                                if (result && result.error) {
+                                    return alert('Произошла ошибка: ' + result.error);
+                                }
+                            });
+                    });
+                }
+
+                function deleteSolution() {
+                    if (!item || typeof item !== 'object') {
+                        return;
+                    }
+                    showConfirmationDialogBeforeDeleting(ev).then(function () {
+                        AdminManager
+                            .deleteSolution( { sent_id: item.sent_id } )
+                            .then(function (result) {
+                                if (result && result.error) {
+                                    return alert('Произошла ошибка: ' + result.error);
+                                }
+                                updateSentsList();
+                            });
+                    });
+                }
+
+                var actions = {
+                    'CHANGE_VERDICT': changeVerdict,
+                    'SEND_DUPLICATE': sendDuplicate,
+                    'REFRESH_SOLUTION': refreshSolution,
+                    'SENT_DELETE': deleteSolution
+                };
+
+                if (action && action.id in actions) {
+                    actions[action.id]();
+                }
+            };
+
+            function showVerdictSelectionDialog(ev, item) {
+                $mdDialog.show({
+                    controller: ['$scope', 'sentItem', function ($scope, sentItem) {
+                        console.log(sentItem);
+                        $scope.close = function () {
+                            $mdDialog.hide();
+                        };
+
+                        $scope.verdicts = [{
+                            id: 1,
+                            name: 'Accepted',
+                            scored: 0
+                        }, {
+                            id: 2,
+                            name: 'Wrong Answer',
+                            scored: 1
+                        }, {
+                            id: 3,
+                            name: 'Compilation Error',
+                            scored: 0
+                        }, {
+                            id: 4,
+                            name: 'Runtime Error',
+                            scored: 1
+                        }, {
+                            id: 5,
+                            name: 'Presentation Error',
+                            scored: 1
+                        }, {
+                            id: 6,
+                            name: 'Time Limit Exceeded',
+                            scored: 1
+                        }, {
+                            id: 7,
+                            name: 'Memory Limit Exceeded',
+                            scored: 1
+                        }, {
+                            id: 8,
+                            name: 'Idleness Limit Exceeded',
+                            scored: 1
+                        }, {
+                            id: 9,
+                            name: 'Security Violated',
+                            scored: 1
+                        }, {
+                            id: 10,
+                            name: 'Unknown System Error',
+                            scored: 0
+                        }, {
+                            id: 11,
+                            name: 'Same solution',
+                            scored: 0
+                        }, {
+                            id: 12,
+                            name: 'Disqualification',
+                            scored: 0
+                        }];
+
+                        $scope.selectedVerdictId = sentItem.verdict_id;
+
+                        $scope.save = function () {
+                            var sentId = sentItem.sent_id,
+                                verdict = $scope.selectedVerdictId;
+                            AdminManager
+                                .setVerdictForSent( { sent_id: sentId, verdict_id: verdict } )
+                                .then(function (result) {
+                                    if (result && result.error) {
+                                        return alert('Произошла ошибка: ' + result.error);
+                                    }
+                                    $mdDialog.hide();
+                                    updateSentsList();
+                                });
+                        };
+                    }],
+                    templateUrl: templateUrl('contest-item/contest-status', 'contest-verdict-selection-dialog'),
+                    parent: angular.element(document.body),
+                    targetEvent: ev,
+                    clickOutsideToClose: true,
+                    locals: {
+                        sentItem: item
+                    }
+                }).then(function(answer) {
+                    $scope.status = 'You said the information was "' + answer + '".';
+                }, function() {
+                    $scope.status = 'You cancelled the dialog.';
+                });
+            }
+
+            function showConfirmationDialogBeforeSendDuplicate(ev) {
+                var confirm = $mdDialog.confirm()
+                    .title('Подтверждение')
+                    .content('Вы действительно хотите отправить это решение еще раз?')
+                    .ariaLabel('Duplicate confirmation')
+                    .ok('Да')
+                    .cancel('Отмена')
+                    .targetEvent(ev);
+                return $mdDialog.show(confirm);
+            }
+
+            function showConfirmationDialogBeforeRefreshing(ev) {
+                var confirm = $mdDialog.confirm()
+                    .title('Подтверждение')
+                    .content('Вы действительно хотите обновить это решение?')
+                    .ariaLabel('Refresh confirmation')
+                    .ok('Да')
+                    .cancel('Отмена')
+                    .targetEvent(ev);
+                return $mdDialog.show(confirm);
+            }
+
+            function showConfirmationDialogBeforeDeleting(ev) {
+                var confirm = $mdDialog.confirm()
+                    .title('Подтверждение')
+                    .content('Вы действительно хотите удалить это решение?')
+                    .ariaLabel('Delete confirmation')
+                    .ok('Да')
+                    .cancel('Отмена')
+                    .targetEvent(ev);
+                return $mdDialog.show(confirm);
+            }
+        }
+    ])
+
+    .controller('ContestItemCellStatusController', [
+        '$scope', '$rootScope', '$state', 'ContestItemManager', '_', '$timeout', 'UserManager', '$mdDialog', 'AdminManager', 'sents', '$originalDialogArgs', '$originalDialogScope',
+        function ($scope, $rootScope, $state, ContestItemManager, _, $timeout, UserManager, $mdDialog, AdminManager, sents, $originalDialogArgs, $originalDialogScope) {
+            $scope.close = function () {
+                $mdDialog.hide();
+            };
+
+            $scope.sents = sents;
+
+            $scope.currentUser = {};
+            UserManager.getCurrentUser().then(function (user) {
+                $scope.currentUser = user;
+            });
+
+            $scope.$on('verdict updated', function (ev, args) {
+                var sents = $scope.sents;
+                for (var i = 0; i < sents.length; ++i) {
+                    if (sents[i].sent_id === args.solution_id) {
+                        if (typeof args.time !== 'undefined') {
+                            sents[i].execution_time = args.time;
+                        }
+                        if (typeof args.memory !== 'undefined') {
+                            sents[i].memory = args.memory;
+                        }
+                        if (typeof args.testNum !== 'undefined') {
+                            sents[i].test_num = args.testNum;
+                        }
+                        if (typeof args.verdict_id !== 'undefined') {
+                            sents[i].verdict_id = args.verdict_id;
+                        }
+                        if (typeof args.verdict_name !== 'undefined') {
+                            sents[i].verdict_name = args.verdict_name;
+                        }
+                        $scope.$apply();
+                        break;
+                    }
+                }
+            });
+
+            $scope.$on('new solution', function (ev, data) {
+                console.log(data);
+                var userId = data.contestant_id;
+                if (userId !== $scope.currentUser.id) {
+                    return;
+                }
+                var sents = $scope.sents;
+                for (var i = 0; i < sents.length; ++i) {
+                    if (sents[i].sent_id === data.sent_id) {
+                        return;
+                    }
+                }
+                $scope.sents.unshift( data );
+            });
+
+            $scope.actionsMenuItems = [{
+                id: 'CHANGE_VERDICT',
+                name: 'Изменить вердикт',
+                svgIcon: '/img/icons/ic_edit_48px.svg'
+            }, {
+                id: 'SEND_DUPLICATE',
+                name: 'Продублировать отправку',
+                svgIcon: '/img/icons/ic_content_copy_48px.svg'
+            }, {
+                id: 'REFRESH_SOLUTION',
+                name: 'Переотправить решение',
+                svgIcon: '/img/icons/ic_refresh_48px.svg'
+            }, {
+                id: 'SENT_DELETE',
+                name: 'Удалить отправку',
+                svgIcon: '/img/icons/ic_delete_48px.svg'
+            }];
+
+            $scope.selectAction = function (ev, action, item) {
+                function changeVerdict() {
+                    if (!item || typeof item !== 'object') {
+                        return;
+                    }
+                    showVerdictSelectionDialog(ev, item);
+                }
+
+                function sendDuplicate() {
+                    if (!item || typeof item !== 'object') {
+                        return;
+                    }
+                    showConfirmationDialogBeforeSendDuplicate(ev).then(function () {
+                        $originalDialogScope.openStatusDialog.apply( null, $originalDialogArgs );
+
+                        AdminManager
+                            .sendSolutionAgain( { sent_id: item.sent_id } )
+                            .then(function (result) {
+                                if (result && result.error) {
+                                    return alert('Произошла ошибка: ' + result.error);
+                                }
+                            });
+                    }, function () {
+                        $originalDialogScope.openStatusDialog.apply( null, $originalDialogArgs );
+                    });
+                }
+
+                function refreshSolution() {
+                    if (!item || typeof item !== 'object') {
+                        return;
+                    }
+                    showConfirmationDialogBeforeRefreshing(ev).then(function () {
+                        $originalDialogScope.openStatusDialog.apply( null, $originalDialogArgs );
+                        AdminManager
+                            .refreshSolution( { sent_id: item.sent_id } )
+                            .then(function (result) {
+                                if (result && result.error) {
+                                    return alert('Произошла ошибка: ' + result.error);
+                                }
+                            });
+                    }, function () {
+                        $originalDialogScope.openStatusDialog.apply( null, $originalDialogArgs );
+                    });
+                }
+
+                function deleteSolution() {
+                    if (!item || typeof item !== 'object') {
+                        return;
+                    }
+                    showConfirmationDialogBeforeDeleting(ev).then(function () {
+                        $originalDialogScope.openStatusDialog.apply( null, $originalDialogArgs );
+                        AdminManager
+                            .deleteSolution( { sent_id: item.sent_id } )
+                            .then(function (result) {
+                                if (result && result.error) {
+                                    return alert('Произошла ошибка: ' + result.error);
+                                }
+                            });
+                    }, function () {
+                        $originalDialogScope.openStatusDialog.apply( null, $originalDialogArgs );
+                    });
+                }
+
+                var actions = {
+                    'CHANGE_VERDICT': changeVerdict,
+                    'SEND_DUPLICATE': sendDuplicate,
+                    'REFRESH_SOLUTION': refreshSolution,
+                    'SENT_DELETE': deleteSolution
+                };
+
+                if (action && action.id in actions) {
+                    actions[action.id]();
+                }
+            };
+
+            function showVerdictSelectionDialog(ev, item) {
+                $mdDialog.show({
+                    controller: ['$scope', 'sentItem', function ($scope, sentItem) {
+                        console.log(sentItem);
+                        $scope.close = function () {
+                            $mdDialog.hide();
+                        };
+
+                        $scope.verdicts = [{
+                            id: 1,
+                            name: 'Accepted',
+                            scored: 0
+                        }, {
+                            id: 2,
+                            name: 'Wrong Answer',
+                            scored: 1
+                        }, {
+                            id: 3,
+                            name: 'Compilation Error',
+                            scored: 0
+                        }, {
+                            id: 4,
+                            name: 'Runtime Error',
+                            scored: 1
+                        }, {
+                            id: 5,
+                            name: 'Presentation Error',
+                            scored: 1
+                        }, {
+                            id: 6,
+                            name: 'Time Limit Exceeded',
+                            scored: 1
+                        }, {
+                            id: 7,
+                            name: 'Memory Limit Exceeded',
+                            scored: 1
+                        }, {
+                            id: 8,
+                            name: 'Idleness Limit Exceeded',
+                            scored: 1
+                        }, {
+                            id: 9,
+                            name: 'Security Violated',
+                            scored: 1
+                        }, {
+                            id: 10,
+                            name: 'Unknown System Error',
+                            scored: 0
+                        }, {
+                            id: 11,
+                            name: 'Same solution',
+                            scored: 0
+                        }, {
+                            id: 12,
+                            name: 'Disqualification',
+                            scored: 0
+                        }];
+
+                        $scope.selectedVerdictId = sentItem.verdict_id;
+
+                        $scope.save = function () {
+                            var sentId = sentItem.sent_id,
+                                verdict = $scope.selectedVerdictId;
+                            AdminManager
+                                .setVerdictForSent( { sent_id: sentId, verdict_id: verdict } )
+                                .then(function (result) {
+                                    if (result && result.error) {
+                                        return alert('Произошла ошибка: ' + result.error);
+                                    }
+                                    $mdDialog.hide();
+                                });
+                        };
+                    }],
+                    templateUrl: templateUrl('contest-item/contest-status', 'contest-verdict-selection-dialog'),
+                    parent: angular.element(document.body),
+                    targetEvent: $originalDialogArgs[0],
+                    clickOutsideToClose: true,
+                    locals: {
+                        sentItem: item
+                    }
+                }).then(function(answer) {
+                    $originalDialogScope.openStatusDialog.apply( null, $originalDialogArgs );
+                }, function() {
+                    $originalDialogScope.openStatusDialog.apply( null, $originalDialogArgs );
+                });
+            }
+
+            function showConfirmationDialogBeforeSendDuplicate(ev) {
+                var confirm = $mdDialog.confirm()
+                    .title('Подтверждение')
+                    .content('Вы действительно хотите отправить это решение еще раз?')
+                    .ariaLabel('Duplicate confirmation')
+                    .ok('Да')
+                    .cancel('Отмена')
+                    .targetEvent($originalDialogArgs[0]);
+                return $mdDialog.show(confirm);
+            }
+
+            function showConfirmationDialogBeforeRefreshing(ev) {
+                var confirm = $mdDialog.confirm()
+                    .title('Подтверждение')
+                    .content('Вы действительно хотите обновить это решение?')
+                    .ariaLabel('Refresh confirmation')
+                    .ok('Да')
+                    .cancel('Отмена')
+                    .targetEvent($originalDialogArgs[0]);
+                return $mdDialog.show(confirm);
+            }
+
+            function showConfirmationDialogBeforeDeleting(ev) {
+                var confirm = $mdDialog.confirm()
+                    .title('Подтверждение')
+                    .content('Вы действительно хотите удалить это решение?')
+                    .ariaLabel('Delete confirmation')
+                    .ok('Да')
+                    .cancel('Отмена')
+                    .targetEvent($originalDialogArgs[0]);
+                return $mdDialog.show(confirm);
+            }
         }
     ])
 

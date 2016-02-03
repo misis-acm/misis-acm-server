@@ -28,7 +28,7 @@ div.contests-list__item-layer(ng-click='joinContest(contest)')
             span Начало через
               my-timer-element.contest-item__status-time(finish='contest.startTime', on-finish='updateContest')
           div(ng-switch-when='RUNNING')
-            span Контест идет. Осталось
+            span.contests-list__item_status_success Контест идет. Осталось
               my-timer-element.contest-item__status-time(
               finish='contest.absoluteDurationTime',
               on-finish='updateContest',

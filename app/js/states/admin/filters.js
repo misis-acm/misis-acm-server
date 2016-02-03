@@ -19,7 +19,7 @@ angular.module('Qemy.filters.admin', [
         };
 
         function latinize(str) {
-            var space = '-',
+            var space = '',
                 text = str.toLowerCase(),
                 transl = {
                 'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e', 'ж': 'zh',

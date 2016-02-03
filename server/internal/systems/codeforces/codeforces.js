@@ -147,6 +147,15 @@ function TrySend(solution, acmAccount, callback) {
         }, data);
     }
 
+    function makeSourceWatermark(source) {
+        //source += '\n\n// Date: ' + (new Date()).toString();
+        return source;
+    }
+
+    if (typeof data.source !== 'undefined') {
+        data.source = makeSourceWatermark(data.source);
+    }
+
     restler.post(selectedBaseUri + '/submit?csrf_token=' + csrf_token, {
         multipart: true,
         headers: {

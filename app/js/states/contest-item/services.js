@@ -83,6 +83,15 @@ angular.module('Qemy.services.contest-item', [
             });
         }
 
+        function getSentsForCell(params) {
+            return $http({
+                method: 'get',
+                url: '/api/contest/getSentsForCell?' + dataEncode(params)
+            }).then(function (data) {
+                return data.data;
+            });
+        }
+
         return {
             getConditions: getConditions,
             getCondition: getCondition,
@@ -90,7 +99,8 @@ angular.module('Qemy.services.contest-item', [
             sendSolution: sendSolution,
             getSents: getSents,
             getSourceCode: getSourceCode,
-            getTable: getTable
+            getTable: getTable,
+            getSentsForCell: getSentsForCell
         }
     }])
 ;

@@ -57,7 +57,8 @@ function GetForContest(params, callback) {
                     'FROM problemset ' +
                     'LEFT JOIN problems_to_contest ON problems_to_contest.problem_id = problemset.id ' +
                     'LEFT JOIN contests ON problems_to_contest.contest_id = contests.id ' +
-                    'WHERE contests.id = ?',
+                    'WHERE contests.id = ? ' +
+                    'ORDER BY problems_to_contest.id ASC',
                     [ contestId ],
                     function (err, results, fields) {
                         if (err) {
@@ -133,6 +134,7 @@ function GetByInternalIndex(params, callback) {
                     'LEFT JOIN problems_to_contest ON problems_to_contest.problem_id = problemset.id ' +
                     'LEFT JOIN contests ON problems_to_contest.contest_id = contests.id ' +
                     'WHERE contests.id = ? ' +
+                    'ORDER BY problems_to_contest.id ASC ' +
                     'LIMIT ?, 1',
                     [ contestId, offset ],
                     function (err, results, fields) {
@@ -190,6 +192,7 @@ function GetLangs(params, callback) {
                 'LEFT JOIN problems_to_contest ON problems_to_contest.problem_id = problemset.id ' +
                 'LEFT JOIN contests ON problems_to_contest.contest_id = contests.id ' +
                 'WHERE contests.id = ? ' +
+                'ORDER BY problems_to_contest.id ASC ' +
                 'LIMIT ?, 1',
                 [ contestId, offset ],
                 function (err, results, fields) {

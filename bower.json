@@ -1,8 +1,8 @@
 {
   "name": "MISIS-ACM",
-  "version": "0.0.1",
+  "version": "0.2.1",
   "authors": [
-    "Aleksandr Belov <ipritoflex@yandex.ru>"
+    "Alexander Belov <ipritoflex@yandex.ru>"
   ],
   "main": "app.js",
   "keywords": [

@@ -10,6 +10,7 @@
 'use strict';
 
 var express = require('express');
+var pm2 = require('pm2');
 var router = express.Router();
 var app = express();
 
@@ -255,7 +256,6 @@ router.post('/contest/send', function (req, res) {
     function execute(callback) {
         var body = req.body,
             user = req.currentUser;
-        user._ip = req.ip || req.ips;
         if (!user || user.isEmpty()) {
             return callback(new Error('User is not specified'));
         }
@@ -374,6 +374,7 @@ router.get('/contest/getSourceCodeRaw', function (req, res) {
                 error: err.toString()
             });
         }
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end(result);
     });
 
@@ -816,6 +817,209 @@ router.post('/admin/createUser', function (req, res) {
             return callback(new Error('Access denied'));
         }
         adminManager.createUser(body, function (err, result) {
+            if (err) {
+                return callback({
+                    error: err.toString()
+                });
+            }
+            callback(null, result);
+        })
+    }
+});
+
+router.post('/admin/restart', function(req, res) {
+    
+    execute(function (err, result) {
+        if (err) {
+            return res.json(err.error ? err : {
+                error: err.toString()
+            });
+        }
+        res.json(result);
+    });
+
+    function execute(callback) {
+        var body = req.body,
+            user = req.currentUser;
+        if (!user || user.isEmpty() || user.getAccessGroup().access_level !== 5) {
+            return callback(new Error('Access denied'));
+        }
+        callback(null, { result: true });
+        pm2.connect(function(err) {
+            if (err) {
+                console.error(err);
+                return process.exit(2);
+            }
+            pm2.restart({
+                script    : 'bin/www',  // Script to be run
+                exec_mode : 'cluster',  // Allow your app to be clustered
+                instances : 1           // Optional: Scale your app by 1
+            }, function(err, apps) {
+                pm2.disconnect();
+            });
+        });
+    }
+});
+
+router.post('/admin/setVerdictForSent', function(req, res) {
+
+    execute(function (err, result) {
+        if (err) {
+            return res.json(err.error ? err : {
+                error: err.toString()
+            });
+        }
+        res.json(result);
+    });
+
+    function execute(callback) {
+        var body = req.body,
+            user = req.currentUser;
+        if (!user || user.isEmpty() || user.getAccessGroup().access_level !== 5) {
+            return callback(new Error('Access denied'));
+        }
+        adminManager.setVerdictForContest(body, function (err, result) {
+            if (err) {
+                return callback({
+                    error: err.toString()
+                });
+            }
+            callback(null, result);
+        })
+    }
+});
+
+router.post('/admin/sendSolutionAgain', function(req, res) {
+
+    execute(function (err, result) {
+        if (err) {
+            return res.json(err.error ? err : {
+                error: err.toString()
+            });
+        }
+        res.json(result);
+    });
+
+    function execute(callback) {
+        var body = req.body,
+            user = req.currentUser;
+        if (!user || user.isEmpty() || user.getAccessGroup().access_level !== 5) {
+            return callback(new Error('Access denied'));
+        }
+        adminManager.sendSolutionAgain(body, function (err, result) {
+            if (err) {
+                return callback({
+                    error: err.toString()
+                });
+            }
+            callback(null, result);
+        })
+    }
+});
+
+router.post('/admin/refreshSolution', function(req, res) {
+
+    execute(function (err, result) {
+        if (err) {
+            return res.json(err.error ? err : {
+                error: err.toString()
+            });
+        }
+        res.json(result);
+    });
+
+    function execute(callback) {
+        var body = req.body,
+            user = req.currentUser;
+        if (!user || user.isEmpty() || user.getAccessGroup().access_level !== 5) {
+            return callback(new Error('Access denied'));
+        }
+        adminManager.refreshSolution(body, function (err, result) {
+            if (err) {
+                return callback({
+                    error: err.toString()
+                });
+            }
+            callback(null, result);
+        })
+    }
+});
+
+router.post('/admin/deleteSolution', function(req, res) {
+
+    execute(function (err, result) {
+        if (err) {
+            return res.json(err.error ? err : {
+                error: err.toString()
+            });
+        }
+        res.json(result);
+    });
+
+    function execute(callback) {
+        var body = req.body,
+            user = req.currentUser;
+        if (!user || user.isEmpty() || user.getAccessGroup().access_level !== 5) {
+            return callback(new Error('Access denied'));
+        }
+        adminManager.deleteSolution(body, function (err, result) {
+            if (err) {
+                return callback({
+                    error: err.toString()
+                });
+            }
+            callback(null, result);
+        })
+    }
+});
+
+router.get('/contest/getSentsForCell', function(req, res) {
+
+    execute(function (err, result) {
+        if (err) {
+            return res.json(err.error ? err : {
+                error: err.toString()
+            });
+        }
+        res.json(result);
+    });
+
+    function execute(callback) {
+        var params = req.query,
+            user = req.currentUser;
+        if (!user || user.isEmpty()) {
+            return callback(new Error('Access denied'));
+        }
+        params.authUser = user;
+        contestManager.getSentsForCell(params, function (err, result) {
+            if (err) {
+                return callback({
+                    error: err.toString()
+                });
+            }
+            callback(null, result);
+        })
+    }
+});
+
+router.post('/admin/getRatingTable', function(req, res) {
+
+    execute(function (err, result) {
+        if (err) {
+            return res.json(err.error ? err : {
+                error: err.toString()
+            });
+        }
+        res.json(result);
+    });
+
+    function execute(callback) {
+        var body = req.body,
+            user = req.currentUser;
+        if (!user || user.isEmpty() || user.getAccessGroup().access_level !== 5) {
+            return callback(new Error('Access denied'));
+        }
+        adminManager.getRatingTable(body, function (err, result) {
             if (err) {
                 return callback({
                     error: err.toString()

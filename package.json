@@ -1,6 +1,6 @@
 {
   "name": "MISIS-ACM",
-  "version": "0.0.1",
+  "version": "0.2.4",
   "main": "bin/www",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -10,7 +10,7 @@
     "production": "npm i pm2 -g",
     "build": "npm i",
     "build-all": "npm i bower -g && npm i pm2 -g && npm i",
-    "build-all-start": "npm i bower -g && npm i pm2 -g && npm i && echo \"Starting pm2...\" && pm2 start bin/www"
+    "build-all-start": "npm i bower -g && npm i pm2 -g && npm i && bower i && echo \"Starting pm2...\" && pm2 start bin/www"
   },
   "keywords": [
     "angular",
@@ -26,11 +26,7 @@
     "grunt-contrib-sass": "^0.9.2",
     "grunt-contrib-uglify": "^0.9.1",
     "grunt-contrib-watch": "^0.6.1",
-    "grunt-newer": "^1.1.0",
-    "phantomjs": "^1.9.16",
-    "pmx": "^0.5.5",
-    "psi": "^1.0.6",
-    "winston": "^1.0.0"
+    "grunt-newer": "^1.1.0"
   },
   "dependencies": {
     "async": "^1.4.2",
@@ -39,7 +35,6 @@
     "cheerio": "^0.19.0",
     "cookie": "^0.2.2",
     "cookie-parser": "~1.3.5",
-    "debug": "~2.2.0",
     "express": "~4.12.4",
     "express-session": "^1.11.3",
     "fetch": "^0.3.6",
@@ -47,6 +42,7 @@
     "morgan": "~1.5.3",
     "mysql": "^2.9.0",
     "node.extend": "^1.1.5",
+    "pm2": "^1.0.0",
     "promise": "^7.0.4",
     "querystring": "^0.2.0",
     "request": "^2.65.0",

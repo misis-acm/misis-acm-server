@@ -29,7 +29,12 @@ module.exports = {
     updateContest: UpdateContest,
     getUsers: GetUsers,
     deleteUser: DeleteUser,
-    createUser: CreateUser
+    createUser: CreateUser,
+    setVerdictForContest: SetVerdictForContest,
+    sendSolutionAgain: SendSolutionAgain,
+    refreshSolution: RefreshSolution,
+    deleteSolution: DeleteSolution,
+    getRatingTable: GetRatingTable
 };
 
 function SearchGroups(q, callback) {
@@ -171,22 +176,29 @@ function CreateContest(params, callback) {
                 return callback(null, { result: true });
             }
 
-            var problemsIds = params.problems.reverse(),
+            var problemsIds = params.problems,
                 contestId = contest.getId(),
                 problemsRows = problemsIds.map(function (problemId) {
                     return [ contestId, problemId ];
                 });
-            connection.query(
-                'INSERT INTO problems_to_contest (contest_id, problem_id) ' +
-                'VALUES ?',
-                [ problemsRows ],
-                function (err) {
-                    if (err) {
-                        return callback(new Error('An error with db'));
+
+            var asyncQueue = async.queue(function (task, callback) {
+                connection.query(
+                    'INSERT INTO problems_to_contest (contest_id, problem_id) ' +
+                    'VALUES (?, ?)', task,
+                    function (err) {
+                        if (err) {
+                            return callback(new Error('An error with db'));
+                        }
+                        console.log(task);
+                        callback();
                     }
-                    callback(null, { result: true });
-                }
-            );
+                );
+            }, 1);
+            asyncQueue.push(problemsRows);
+            asyncQueue.drain = function() {
+                callback(null, { result: true });
+            };
         })
     }
 }
@@ -230,7 +242,7 @@ function UpdateContest(params, callback) {
                 return callback(new Error('Contest is empty'));
             }
 
-            var problemsIds = params.problems.reverse(),
+            var problemsIds = params.problems,
                 contestId = contest.getId(),
                 problemsRows = problemsIds.map(function (problemId) {
                     return [ contestId, problemId ];
@@ -246,17 +258,24 @@ function UpdateContest(params, callback) {
                     if (!params.problems.length) {
                         return callback(null, { result: true });
                     }
-                    connection.query(
-                        'INSERT INTO problems_to_contest (contest_id, problem_id) ' +
-                        'VALUES ?',
-                        [ problemsRows ],
-                        function (err) {
-                            if (err) {
-                                return callback(new Error('An error with db'));
+
+                    var asyncQueue = async.queue(function (task, callback) {
+                        connection.query(
+                            'INSERT INTO problems_to_contest (contest_id, problem_id) ' +
+                            'VALUES (?, ?)', task,
+                            function (err) {
+                                if (err) {
+                                    return callback(new Error('An error with db'));
+                                }
+                                console.log(task);
+                                callback();
                             }
-                            callback(null, { result: true });
-                        }
-                    );
+                        );
+                    }, 1);
+                    asyncQueue.push(problemsRows);
+                    asyncQueue.drain = function() {
+                        callback(null, { result: true });
+                    };
                 }
             );
         })
@@ -356,7 +375,8 @@ function GetContestInfo(params, user, callback) {
                     'FROM problemset ' +
                     'LEFT JOIN problems_to_contest ON problems_to_contest.problem_id = problemset.id ' +
                     'LEFT JOIN contests ON problems_to_contest.contest_id = contests.id ' +
-                    'WHERE contests.id = ?',
+                    'WHERE contests.id = ? ' +
+                    'ORDER BY problems_to_contest.id ASC',
                     [ contestId ],
                     function (err, results, fields) {
                         if (err) {
@@ -469,4 +489,294 @@ function CreateUser(params, callback) {
             }
         );
     }
+}
+
+function SetVerdictForContest(params, callback) {
+
+    mysqlPool.connection(function (err, connection) {
+        if (err) {
+            return callback(new Error('An error with db', 1001));
+        }
+        execute(connection, function (err, result) {
+            connection.release();
+            if (err) {
+                return callback(err);
+            }
+            callback(null, result);
+        });
+    });
+
+    function execute(connection, callback) {
+        var sentId = params.sent_id,
+            verdictId = params.verdict_id;
+        if (!sentId || !verdictId) {
+            return callback('Params not specified');
+        }
+        connection.query(
+            'UPDATE sent_solutions ' +
+            'SET ? ' +
+            'WHERE id = ?',
+            [ { verdict_id: verdictId }, sentId ],
+            function (err) {
+                if (err) {
+                    return callback(new Error('An error with db'));
+                }
+                callback(null, { result: true });
+            }
+        );
+    }
+}
+
+function SendSolutionAgain(params, callback) {
+
+    mysqlPool.connection(function (err, connection) {
+        if (err) {
+            return callback(new Error('An error with db', 1001));
+        }
+        execute(connection, function (err, result) {
+            connection.release();
+            if (err) {
+                return callback(err);
+            }
+            callback(null, result);
+        });
+    });
+
+    function execute(connection, callback) {
+        var sentId = params.sent_id;
+        if (!sentId) {
+            return callback('Params not specified');
+        }
+        connection.query(
+            'SELECT * ' +
+            'FROM sent_solutions ' +
+            'WHERE id = ?',
+            [ sentId ],
+            function (err, result, fields) {
+                if (err) {
+                    return callback(new Error('An error with db'));
+                }
+                if (Array.isArray(result) && result.length > 0) {
+                    result = result[0];
+                } else {
+                    return callback('Something went wrong (db)', 1001);
+                }
+                var contestId = result.contest_id,
+                    solution = result.source_code,
+                    user = new User(),
+                    langId = result.lang_id,
+                    problemIndex;
+
+                function createIndexGenerator() {
+                    var alphabet = 'abcdefghijklmnopqrstuvwxyz'.split(''),
+                        curIndex = -1;
+                    return function () {
+                        curIndex++;
+                        var symbolsNumber = Math.floor(curIndex / alphabet.length) + 1;
+                        if (symbolsNumber === 1) {
+                            return alphabet[ curIndex ];
+                        } else {
+                            return alphabet[ symbolsNumber - 2 ] + alphabet[ curIndex % alphabet.length ];
+                        }
+                    }
+                }
+
+                user.allocate(result.user_id, function (err) {
+                    if (err) {
+                        return callback('Something went wrong (db)', 1001);
+                    }
+                    connection.query(
+                        'SELECT problemset.id, problemset.title ' +
+                        'FROM problemset ' +
+                        'LEFT JOIN problems_to_contest ON problems_to_contest.problem_id = problemset.id ' +
+                        'WHERE problems_to_contest.contest_id = ? ' +
+                        'ORDER BY problems_to_contest.id ASC',
+                        [ contestId ],
+                        function (err, results, fields) {
+                            if (err) {
+                                return callback(new Error('An error with db', 1001));
+                            }
+                            var indexMapping = {},
+                                fallIndexMapping = {},
+                                nextIndex = createIndexGenerator();
+                            for (var el in results) {
+                                var id = results[el].id;
+                                if (typeof id !== 'undefined') {
+                                    var iIndex = nextIndex().toUpperCase();
+                                    indexMapping['id' + id] = {
+                                        index: iIndex,
+                                        name: results[el].title
+                                    };
+                                    fallIndexMapping[ 'ind' + iIndex ] = id;
+                                }
+                            }
+                            problemIndex = indexMapping[ 'id' + result.problem_id].index;
+                            contestManager.sendSolution({
+                                contestId: contestId,
+                                solution: solution,
+                                user: user,
+                                langId: langId,
+                                problemIndex: problemIndex
+                            }, function (err) {
+                                if (err) {
+                                    return callback(err);
+                                }
+                                callback(null, { result: true });
+                            });
+                        }
+                    );
+                });
+            }
+        );
+    }
+}
+
+function RefreshSolution(params, callback) {
+
+    mysqlPool.connection(function (err, connection) {
+        if (err) {
+            return callback(new Error('An error with db', 1001));
+        }
+        execute(connection, function (err, result) {
+            connection.release();
+            if (err) {
+                return callback(err);
+            }
+            callback(null, result);
+        });
+    });
+
+    function execute(connection, callback) {
+        var sentId = params.sent_id;
+        if (!sentId) {
+            return callback('Params not specified');
+        }
+        connection.query(
+            'SELECT * ' +
+            'FROM sent_solutions ' +
+            'WHERE id = ?',
+            [ sentId ],
+            function (err, result, fields) {
+                if (err) {
+                    return callback(new Error('An error with db'));
+                }
+                if (Array.isArray(result) && result.length > 0) {
+                    result = result[0];
+                } else {
+                    return callback('Something went wrong (db)', 1001);
+                }
+                var contestId = result.contest_id,
+                    solution = result.source_code,
+                    user = new User(),
+                    langId = result.lang_id,
+                    problemIndex;
+
+                function createIndexGenerator() {
+                    var alphabet = 'abcdefghijklmnopqrstuvwxyz'.split(''),
+                        curIndex = -1;
+                    return function () {
+                        curIndex++;
+                        var symbolsNumber = Math.floor(curIndex / alphabet.length) + 1;
+                        if (symbolsNumber === 1) {
+                            return alphabet[ curIndex ];
+                        } else {
+                            return alphabet[ symbolsNumber - 2 ] + alphabet[ curIndex % alphabet.length ];
+                        }
+                    }
+                }
+
+                user.allocate(result.user_id, function (err) {
+                    if (err) {
+                        return callback('Something went wrong (db)', 1001);
+                    }
+                    connection.query(
+                        'SELECT problemset.id, problemset.title ' +
+                        'FROM problemset ' +
+                        'LEFT JOIN problems_to_contest ON problems_to_contest.problem_id = problemset.id ' +
+                        'WHERE problems_to_contest.contest_id = ? ' +
+                        'ORDER BY problems_to_contest.id ASC',
+                        [ contestId ],
+                        function (err, results, fields) {
+                            if (err) {
+                                return callback(new Error('An error with db', 1001));
+                            }
+                            var indexMapping = {},
+                                fallIndexMapping = {},
+                                nextIndex = createIndexGenerator();
+                            for (var el in results) {
+                                var id = results[el].id;
+                                if (typeof id !== 'undefined') {
+                                    var iIndex = nextIndex().toUpperCase();
+                                    indexMapping['id' + id] = {
+                                        index: iIndex,
+                                        name: results[el].title
+                                    };
+                                    fallIndexMapping[ 'ind' + iIndex ] = id;
+                                }
+                            }
+                            problemIndex = indexMapping[ 'id' + result.problem_id].index;
+                            contestManager.refreshSolution({
+                                contestId: contestId,
+                                solution: solution,
+                                user: user,
+                                langId: langId,
+                                problemIndex: problemIndex,
+                                sendId: sentId
+                            }, function (err) {
+                                if (err) {
+                                    return callback(err);
+                                }
+                                callback(null, { result: true });
+                            });
+                        }
+                    );
+                });
+            }
+        );
+    }
+}
+
+function DeleteSolution(params, callback) {
+
+    mysqlPool.connection(function (err, connection) {
+        if (err) {
+            return callback(new Error('An error with db', 1001));
+        }
+        execute(connection, function (err, result) {
+            connection.release();
+            if (err) {
+                return callback(err);
+            }
+            callback(null, result);
+        });
+    });
+
+    function execute(connection, callback) {
+        var sentId = params.sent_id;
+        if (!sentId) {
+            return callback('Params not specified');
+        }
+        connection.query(
+            'DELETE ' +
+            'FROM sent_solutions ' +
+            'WHERE id = ?',
+            [ sentId ],
+            function (err, result, fields) {
+                if (err) {
+                    return callback(new Error('An error with db'));
+                }
+                callback(null, { result: true });
+            }
+        );
+    }
+}
+
+function GetRatingTable(params, callback) {
+
+    contestManager.getRatingTable(params, function (err, result) {
+        if (err) {
+            return callback(err);
+        }
+        callback(null, result);
+    });
 }

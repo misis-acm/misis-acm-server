@@ -28,7 +28,7 @@ div.contests-list__item-layer.admin-contests__contest-item
             span Начало через
               my-timer-element.contest-item__status-time(finish='contest.startTime')
           div(ng-switch-when='RUNNING')
-            span Контест идет. Осталось
+            span.contests-list__item_status_success Контест идет. Осталось
               my-timer-element.contest-item__status-time(finish='contest.absoluteDurationTime')
           div(ng-switch-when='PRACTICE')
             span.contests-list__item_status_success Дорешивание. Осталось

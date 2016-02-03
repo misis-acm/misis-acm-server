@@ -118,7 +118,7 @@ function Watch(params, callback, progressCallback) {
                     if (!found) {
                         attempts++;
                     }
-                    if (attempts > 10) {
+                    if (attempts > 30) {
                         callback(new Error('ACCOUNT_REFRESH_NEEDED'));
                         return next(true);
                     }

@@ -27,7 +27,7 @@ div.contest
               span Начало через
                 my-timer-element.contest-item__status-time(finish='contest.startTime', on-finish='updateContest')
             div(ng-switch-when='RUNNING')
-              span Контест идет. Осталось
+              span.contests-list__item_status_success Контест идет. Осталось
                 my-timer-element.contest-item__status-time(
                 finish='contest.absoluteDurationTime',
                 on-finish='updateContest',
@@ -63,13 +63,21 @@ div.contest
               div.monitor-content__cell.monitor-content__cell-participant
                 span(ng-bind='row.user.user_full_name')
               div.monitor-content__cell.monitor-content__cell-result(ng-repeat='cell in row.row',
-              ng-class='{"monitor-content__cell_type_accepted": cell.result.indexOf("+") !== -1, "monitor-content__cell_type_frozen": cell.frozen, "monitor-content__cell_type_in-practice": cell.inPractice}',
-              title='{{cell.frozen ? "Отправлено после заморозки" : (cell.inPractice ? "Дорешено" : "")}}')
+              ng-class='{"monitor-content__cell_type_clickable": cell.result !== "—", "monitor-content__cell_type_accepted": cell.result.indexOf("+") !== -1, "monitor-content__cell_type_frozen": cell.frozen, "monitor-content__cell_type_in-practice": cell.inPractice}',
+              title='{{cell.frozen ? "Отправлено после заморозки" : (cell.inPractice ? "Дорешено" : "")}}',
+              ng-click='openStatusDialog($event, cell, row.user)')
                 span(ng-bind='cell.result')
-                span.monitor-content__cell_accept-time(ng-if='cell.time', ng-class='{"monitor-content__cell_accept-time-too-much": row.row.length > 30}')
+                span.monitor-content__cell_accept-time(ng-if='cell.time', ng-class='{"monitor-content__cell_accept-time-too-much": row.row.length > 20}')
                   span(ng-bind='cell.time')
+                span.monitor-content__cell-loading(ng-if='cell._loading', onclick='event.stopPropagation()')
+                  div.content-spin__layer
+                    div.search-spin-layer_
+                      div.search-spin
               div.monitor-content__cell.monitor-content__cell-solutions
                 span(ng-bind='row.solutions')
+                span.monitor-content__cell-solutions_type_after-contest(ng-if='row.solutions - row.solutionsInTime > 0')
+                  div(tabindex='{{$index}}')
+                    md-tooltip Решено во время контеста: {{row.solutionsInTime}}
               div.monitor-content__cell.monitor-content__cell-score
                 span(ng-bind='row.score')
           

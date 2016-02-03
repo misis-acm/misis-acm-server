@@ -9,7 +9,12 @@ div.contest
           div.task__title-index
             span(ng-bind='condition.internal_index + ". " + condition.title + ""')
 
-        div.task__problem(ng-class='{"task__problem-timus": condition.system_type === "timus", "task__problem-sgu": condition.system_type === "sgu", "task__problem-cf": condition.system_type === "cf", "task__problem-acmp": condition.system_type === "acmp"}')
+        div.task__problem(
+        ng-class='{"task__problem-timus": condition.system_type === "timus", \
+        "task__problem-sgu": condition.system_type === "sgu", \
+        "task__problem-cf": condition.system_type === "cf", \
+        "task__problem-acmp": condition.system_type === "acmp", \
+        "task__problem-cf_type_gym": condition.system_problem_number.indexOf("gym") >= 0 }')
           div(md-template='condition.formatted_text')
 
         div.task__send-layer

@@ -1,7 +1,7 @@
 module.exports = {
     server: {
-        port        : process.env.PORT || 3000,
-        ip          : process.env.IP || '127.0.0.1',
+        port        : process.env.PORT || 8080,
+        ip          : process.env.IP || '10.135.1.53' || '127.0.0.1',
         domains     : [ 'localhost:3000' ],
         cur_domain  : 0
     },
